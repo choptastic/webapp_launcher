@@ -1,0 +1,151 @@
+#!/usr/bin/env perl
+
+our $vsn = "0.1.0";
+our $vsn_date = "2024-12-18";
+our $thisapp = $0;
+
+our $browser = $ARGV[0];
+our $app = $ARGV[1];
+our $url = $ARGV[2];
+our $window_size = $ARGV[3];
+
+if($#ARGV!=3) {
+	&info();
+}else{
+	&main();
+}
+
+sub main {
+	&init_dir();
+
+	my($mx, $my) = &mouse_coords();
+
+	my($display, $width, $height, $offset_x, $offset_y) = &display_with_mouse_window_size($mx, $my);
+
+	my($bwidth, $bheight) = &browser_window_size();
+	
+	my $window_position = &calculate_window_position($bwidth, $bheight, $mx, $my, $width, $height, $offset_x, $offset_y);
+
+	my $cmd = "$browser --user-data-dir=\"$tmp_profile_dir\" --no-first-run --disable-extensions --window-size=$window_size --window-position=$window_position --app=\"$url\"";
+	print "Executing: $cmd\n";
+	system($cmd);
+}
+
+
+
+
+sub info {
+	print "Sigma Star Web App Launcher\n";
+	print "Version $vsn ($vsn_date)\n";
+	print "\nUsage:\n\t$thisapp BROWSER APP_NAME URL WIDTH,HEIGHT\n\n";
+	print "Example:\n\t$thisapp brave-browser google-keep https://keep.google.com 600,800\n\n";
+	print "NOTE: This currently only works with Chromium-based Browsers.\n\n";
+	exit(1);
+}
+
+sub init_dir {
+	my $home = $ENV{"HOME"};
+	my $tmp_profile_dir = "$home/.cache/chrome-launcher/$app";
+	print "Checking for existence of $tmp_profile_dir...";
+	if(-d $tmp_profile_dir) {
+		print("ok\n");
+	}elsif(-e $tmp_profile_dir) {
+		print("$tmp_profile_dir exists and is a file, not a directory. You might want to use a different name\n"),
+		exit(1);
+	}else{
+		print("not found - initializing...");
+		system("mkdir -p \"$tmp_profile_dir\"") || print("Failed to init directory");
+		print("ok\n");
+	}
+	return $tmp_profile_dir;
+}
+
+
+sub display_with_mouse_window_size {
+	my($mx, $my) = @_;
+	my $displayinfo = `xrandr --current | grep " connected"`;
+	my @display_lines = split(/\n/, $displayinfo);
+	my ($display, $width, $height, $left, $top, $offset_x, $offset_y);
+	for (@display_lines) {
+		if(/^([^\s]+)\s+connected.*\s+(\d+)x(\d+)[+](\d+)[+](\d+)/) {
+			print "Valid Display Line: $_\n";
+			$display = $1;
+			$width = $2;
+			$height = $3;
+			$offset_x = $4;
+			$offset_y = $5;
+
+			print "Width: $width\n";
+			print "Height: $height\n";
+			print "Offset-X: $offset_x\n";
+			print "Offset-Y: $offset_y\n";
+
+			print "Comparing: $mx between $offset_x and ".($offset_x + $width)."\n";
+			print "Comparing: $my between $offset_y and ".($offset_y + $height)."\n";
+
+
+			if($mx >= $offset_x and $mx <= $offset_x + $width and
+			   $my >= $offset_y and $my <= $offset_y + $height) {
+				print "This is the one!\n";
+				return ($display, $width, $height, $offset_x, $offset_y);
+			}
+		}
+		else{
+			print "Invalid Display Line: $_\n";
+		}
+	}
+	print "Unable to find connected display\n";
+	exit(1);
+}
+
+sub mouse_coords {
+	my $x = `xdotool getmouselocation --shell | grep X= | cut -d= -f2`;
+	my $y = `xdotool getmouselocation --shell | grep Y= | cut -d= -f2`;
+	chomp($x);
+	chomp($y);
+	print "Mouse Coordinates: $x, $y\n";
+	return ($x, $y);
+}
+
+sub browser_window_size {
+	if($window_size =~ /(\d+)[x,](\d+)/) {
+		$width=$1;
+		$height=$2;
+	}else{
+		$width=640;
+		$height=480;
+	}
+	# This is just making corrections
+	$window_size="$width,$height";
+	return ($width, $height);
+}
+
+sub calculate_window_position {
+	# b* = browser width/height
+	# d* = display width/height
+	# offset is x and y offset of displays (for multidisplay)
+	my ($bwidth, $bheight, $mx, $my, $dwidth, $dheight, $offset_x, $offset_y) = @_;
+
+	my($posx, $posy) = ($mx, $my);
+	$posx = $mx - ($bwidth/2);
+	$posy = $my - ($bheight/2);
+
+	## First checking if the window is too wide or too tall to fit on the current screen
+	if($mx + $bwidth > $offset_x + $dwidth) {
+		$posx = $offset_x + $dwidth - $bwidth;
+	}
+	if($my + $bheight > $offset_y + $dheight) {
+		$posy = $offset_y + $dheight - $bheight;
+	}
+
+	## Now we want to check if it's close to the top or the left side of the screen, and if so, 'dock' it there.
+	
+	if($mx < $offset_x + ($bwidth*0.8)) {
+		$posx = $offset_x+1;
+	}
+	if($my < $offset_y + ($bheight*0.8)) {
+		$posy = $offset_y+1;
+	}
+	return "$posx,$posy";
+}
+	
