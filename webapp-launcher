@@ -16,13 +16,15 @@ if($#ARGV!=3) {
 }
 
 sub main {
-	&init_dir();
+	my $tmp_profile_dir = &init_dir();
 
 	my($mx, $my) = &mouse_coords();
 
 	my($display, $width, $height, $offset_x, $offset_y) = &display_with_mouse_window_size($mx, $my);
 
-	my($bwidth, $bheight) = &browser_window_size();
+	my($bwidth, $bheight) = &browser_window_size($width, $height);
+
+	$window_size = "$bwidth,$bheight";
 	
 	my $window_position = &calculate_window_position($bwidth, $bheight, $mx, $my, $width, $height, $offset_x, $offset_y);
 
@@ -50,7 +52,7 @@ sub init_dir {
 	if(-d $tmp_profile_dir) {
 		print("ok\n");
 	}elsif(-e $tmp_profile_dir) {
-		print("$tmp_profile_dir exists and is a file, not a directory. You might want to use a different name\n"),
+		print("$tmp_profile_dir exists and is a file, not a directory. You might want to use a different name\n");
 		exit(1);
 	}else{
 		print("not found - initializing...");
@@ -83,7 +85,6 @@ sub display_with_mouse_window_size {
 			print "Comparing: $mx between $offset_x and ".($offset_x + $width)."\n";
 			print "Comparing: $my between $offset_y and ".($offset_y + $height)."\n";
 
-
 			if($mx >= $offset_x and $mx <= $offset_x + $width and
 			   $my >= $offset_y and $my <= $offset_y + $height) {
 				print "This is the one!\n";
@@ -108,19 +109,39 @@ sub mouse_coords {
 }
 
 sub browser_window_size {
+	my ($dwidth, $dheight) = @_;
+
 	if($window_size =~ /(\d+)[x,](\d+)/) {
-		$width=$1;
-		$height=$2;
+		$bwidth=$1;
+		$bheight=$2;
+		print "The desired browser width is $bwidth x $bheight\n";
 	}else{
-		$width=640;
-		$height=480;
+		$bwidth=640;
+		$bheight=480;
+		print "No browser width specified, defaulting to $bwidth x $bheight\n";
 	}
+	
+	print "Checking if the browser size is too big for the display...\n";
+	if($bwidth > $dwidth - 50) {
+		print "Browser width $bwidth too big for display ($dwidth).";
+		$bwidth = $dwidth - 50;
+		print " Resized to $bwidth\n";
+	}
+	if($bheight > $dheight - 20) {
+		print "Browser height $bheight too big for display ($dheight).";
+		$bheight = $dheight - 20;
+		print " Resized to $bheight\n";
+	}
+
+
 	# This is just making corrections
-	$window_size="$width,$height";
-	return ($width, $height);
+	return ($bwidth, $bheight);
 }
 
 sub calculate_window_position {
+
+	print "Calculating Window Position based on window size, current display, and mouse position...\n";
+
 	# b* = browser width/height
 	# d* = display width/height
 	# offset is x and y offset of displays (for multidisplay)
@@ -130,11 +151,15 @@ sub calculate_window_position {
 	$posx = $mx - ($bwidth/2);
 	$posy = $my - ($bheight/2);
 
+	print "Default Window position is: $posx, $posy\n";
+
 	## First checking if the window is too wide or too tall to fit on the current screen
-	if($mx + $bwidth > $offset_x + $dwidth) {
+	if($posx + $bwidth > $offset_x + $dwidth) {
+		print "Window width ($bwidth) will be too wide for the display ($dwidth) when X=$posx.\n";
 		$posx = $offset_x + $dwidth - $bwidth;
 	}
-	if($my + $bheight > $offset_y + $dheight) {
+	if($posy + $bheight > $offset_y + $dheight) {
+		print "Window height ($bheight) will be too tall for the display ($dheight) when Y=$posy.\n";
 		$posy = $offset_y + $dheight - $bheight;
 	}
 
@@ -142,9 +167,11 @@ sub calculate_window_position {
 	
 	if($mx < $offset_x + ($bwidth*0.8)) {
 		$posx = $offset_x+1;
+		print "Mouse X ($mx) is close to the left edge of window ($offset_x)\n";
 	}
 	if($my < $offset_y + ($bheight*0.8)) {
 		$posy = $offset_y+1;
+		print "Mouse Y ($my) is close to the bottom edge of window ($offset_y)\n";
 	}
 	return "$posx,$posy";
 }
